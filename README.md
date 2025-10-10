@@ -1,7 +1,5 @@
 # next8n
 
-Universal workflow API with adapter pattern. Write once, run anywhere.
-
 Platform-agnostic workflow orchestration built on Next.js. Currently supports n8n, designed for extensibility.
 
 ## Quick Start
