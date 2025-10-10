@@ -1,0 +1,14 @@
+pre-commit:
+  parallel: true
+  commands:
+    lint:
+      run: bunx biome check --write --staged --unsafe || (echo "No files to lint" && exit 0)
+    types:
+      run: bunx tsgo --noEmit
+
+pre-push:
+  commands:
+    check-types:
+      run: bunx tsgo --noEmit
+    lint-ci:
+      run: bunx biome ci .
