@@ -1,155 +1,84 @@
-# Next8n - Universal Workflow API
+# next8n
 
-Next.js-based Universal Workflow API with platform-agnostic format and adapter pattern. Currently supports n8n, designed to extend to other platforms.
+Universal workflow API with adapter pattern. Write once, run anywhere.
 
-## Architecture
-
-This project uses a **Universal Workflow Format (UWF)** with an adapter pattern:
-
-- **UWF Types** (`lib/uwf/types.ts`) - Platform-agnostic workflow representation
-- **Adapters** (`lib/uwf/n8n-adapter.ts`) - Convert between UWF ↔ platform-specific formats
-- **API Routes** (`app/api/workflows/**`) - Unified RESTful API
-- **Tests** (`tests/api/workflows.test.ts`) - Comprehensive test suite (9 tests)
+Platform-agnostic workflow orchestration built on Next.js. Currently supports n8n, designed for extensibility.
 
 ## Quick Start
 
 ```bash
-bun install
-bun run setup:n8n
-bun dev
-bun test tests/api/workflows.test.ts
+bun install && bun run setup:n8n && bun dev
+# n8n UI → http://localhost:5678 (admin@example.com / Admin123)
+# API → http://localhost:3000/api/workflows
 ```
 
-## Universal Workflow API
+## Architecture
 
-### List Workflows
+**UWF (Universal Workflow Format)** → **Adapters** → **Platforms**
 
-`GET /api/workflows`
-
-Returns all workflows in UWF format.
-
-**Response:**
-```json
-[
-  {
-    "id": "abc123",
-    "name": "My Workflow",
-    "enabled": true,
-    "triggers": [...],
-    "actions": [...],
-    "platformData": {...}
-  }
-]
+```
+lib/uwf/types.ts          # Platform-agnostic types
+lib/uwf/n8n-adapter.ts    # n8n ↔ UWF converter
+app/api/workflows/**      # RESTful CRUD
 ```
 
-### Create Workflow
+## API
 
-`POST /api/workflows`
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/api/workflows` | List all |
+| `POST` | `/api/workflows` | Create |
+| `GET` | `/api/workflows/:id` | Get one |
+| `PUT` | `/api/workflows/:id` | Update |
+| `PATCH` | `/api/workflows/:id` | Activate/deactivate |
+| `DELETE` | `/api/workflows/:id` | Delete |
 
-**Request body:**
+<details>
+<summary>Example: Create Workflow</summary>
+
 ```json
+POST /api/workflows
 {
   "id": "uuid",
-  "name": "My Workflow",
+  "name": "Webhook → HTTP",
   "enabled": false,
   "triggers": [{
     "id": "t1",
     "type": "webhook",
-    "config": {
-      "path": "/my-webhook",
-      "method": "POST"
-    },
+    "config": { "path": "/hook", "method": "POST" },
     "next": ["a1"]
   }],
   "actions": [{
     "id": "a1",
     "type": "http",
-    "config": {
-      "url": "https://api.example.com",
-      "method": "GET"
-    },
+    "config": { "url": "https://api.example.com", "method": "GET" },
     "next": []
   }]
 }
 ```
+</details>
 
-### Get Workflow
+<details>
+<summary>UWF Type Reference</summary>
 
-`GET /api/workflows/:id`
-
-Returns single workflow in UWF format.
-
-### Update Workflow
-
-`PUT /api/workflows/:id`
-
-Updates workflow properties. Preserves `platformData` for perfect round-trips.
-
-**Request body:**
-```json
-{
-  "name": "Updated Name",
-  "enabled": false,
-  "triggers": [...],
-  "actions": [...],
-  "platformData": {...}
-}
-```
-
-### Activate/Deactivate Workflow
-
-`PATCH /api/workflows/:id`
-
-**Activate:**
-```json
-{ "enabled": true }
-```
-
-**Deactivate:**
-```json
-{ "enabled": false }
-```
-
-### Delete Workflow
-
-`DELETE /api/workflows/:id`
-
-Removes workflow permanently.
-
-## UWF Type Reference
-
-### Workflow
 ```typescript
 interface Workflow {
   id: string;
   name: string;
   enabled: boolean;
-  triggers: Trigger[];
-  actions: Action[];
-  platformData?: unknown; // Preserves platform-specific data
+  triggers: Trigger[];  // webhook | schedule | manual
+  actions: Action[];    // http | email | transform
+  platformData?: unknown; // Preserves native format
 }
 ```
 
-### Trigger Types
-- `webhook` - HTTP webhook trigger
-- `schedule` - Cron-based schedule
-- `manual` - Manual execution
+**Triggers**: `webhook`, `schedule`, `manual`
+**Actions**: `http`, `email`, `transform`
+</details>
 
-### Action Types
-- `http` - HTTP request
-- `email` - Email send
-- `transform` - Data transformation
+## Extend to New Platforms
 
-## Platform Support
-
-### Current: n8n
-- Adapter: `lib/uwf/n8n-adapter.ts`
-- Full CRUD support
-- Activation/deactivation
-- Perfect round-trip with `platformData`
-
-### Future: Extensible
-Add new platforms by implementing the `WorkflowAdapter` interface:
+Implement `WorkflowAdapter`:
 
 ```typescript
 interface WorkflowAdapter {
@@ -164,51 +93,14 @@ interface WorkflowAdapter {
 }
 ```
 
+See `lib/uwf/n8n-adapter.ts` for reference.
+
 ## Development
 
-### Run Tests
 ```bash
-bun test tests/api/workflows.test.ts
+bun test tests/api/workflows.test.ts  # Run tests
+bunx tsc --noEmit                      # Typecheck
+bun run lint                            # Lint
 ```
 
-### Typecheck
-```bash
-bunx tsc --noEmit
-```
-
-### Lint
-```bash
-bun run lint
-```
-
-## n8n Access
-
-n8n UI: http://localhost:5678
-
-Login: `admin@example.com` / `Admin123`
-
-## Reset n8n
-
-```bash
-docker compose down -v
-rm .env.local
-bun run setup:n8n
-```
-
-## Project Structure
-
-```
-lib/
-  uwf/
-    types.ts           # UWF type definitions
-    n8n-adapter.ts     # n8n adapter implementation
-  n8n.ts               # n8n HTTP client & types
-app/
-  api/
-    workflows/
-      route.ts         # GET, POST /api/workflows
-      [id]/route.ts    # GET, PUT, PATCH, DELETE /api/workflows/:id
-tests/
-  api/
-    workflows.test.ts  # Comprehensive API tests
-```
+**Reset n8n**: `docker compose down -v && rm .env.local && bun run setup:n8n`
