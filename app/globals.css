@@ -114,10 +114,16 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    /* optional for debugging only */
+    /* @apply border-border outline-ring/50; */
   }
+
+  html {
+    @apply overscroll-none h-[100dvh];
+  }
+
   body {
-    @apply bg-background text-foreground overscroll-none overflow-hidden h-[100dvh];
+    @apply bg-background text-foreground antialiased overflow-y-auto;
     font-size: 22px;
   }
 }
