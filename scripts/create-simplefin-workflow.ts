@@ -54,14 +54,14 @@ const n8nWorkflow = {
             {
               id: "access-url-field",
               name: "accessUrl",
-              value:
-                '={{ $json.body.accessUrl || $json.accessUrl || "" }}',
+              value: '={{ $json.body.accessUrl || $json.accessUrl || "" }}',
               type: "string",
             },
             {
               id: "output-path",
               name: "outputPath",
-              value: '={{ $json.body.outputPath || $json.outputPath || "/tmp/simplefin" }}',
+              value:
+                '={{ $json.body.outputPath || $json.outputPath || "/tmp/simplefin" }}',
               type: "string",
             },
             {
@@ -206,7 +206,8 @@ return [{
           parameters: [
             {
               name: "start-date",
-              value: '={{ $json.startDate ? Math.floor(new Date($json.startDate).getTime() / 1000) : "" }}',
+              value:
+                '={{ $json.startDate ? Math.floor(new Date($json.startDate).getTime() / 1000) : "" }}',
             },
           ],
         },
@@ -241,7 +242,8 @@ return [{
           parameters: [
             {
               name: "start-date",
-              value: '={{ $json.startDate ? Math.floor(new Date($json.startDate).getTime() / 1000) : "" }}',
+              value:
+                '={{ $json.startDate ? Math.floor(new Date($json.startDate).getTime() / 1000) : "" }}',
             },
           ],
         },
@@ -416,19 +418,19 @@ return [{
             {
               id: "keep-data",
               name: "accessUrl",
-              value: '={{ $json.accessUrl }}',
+              value: "={{ $json.accessUrl }}",
               type: "string",
             },
             {
               id: "keep-output",
               name: "outputPath",
-              value: '={{ $json.outputPath }}',
+              value: "={{ $json.outputPath }}",
               type: "string",
             },
             {
               id: "keep-start",
               name: "startDate",
-              value: '={{ $json.startDate }}',
+              value: "={{ $json.startDate }}",
               type: "string",
             },
           ],
@@ -442,7 +444,9 @@ return [{
       main: [[{ node: "Set Input Parameters", type: "main", index: 0 }]],
     },
     "Set Input Parameters": {
-      main: [[{ node: "Check If Access URL Provided", type: "main", index: 0 }]],
+      main: [
+        [{ node: "Check If Access URL Provided", type: "main", index: 0 }],
+      ],
     },
     "Check If Access URL Provided": {
       main: [
@@ -485,13 +489,17 @@ async function createWorkflow() {
 
   try {
     // Check if workflow already exists
-    const { data: existingWorkflows } = (await n8nFetch("/api/v1/workflows")) as {
+    const { data: existingWorkflows } = (await n8nFetch(
+      "/api/v1/workflows",
+    )) as {
       data: Array<{ id: string; name: string }>;
     };
 
     const existing = existingWorkflows.find((w) => w.name === WORKFLOW_NAME);
     if (existing) {
-      console.log(`Workflow "${WORKFLOW_NAME}" already exists (ID: ${existing.id})`);
+      console.log(
+        `Workflow "${WORKFLOW_NAME}" already exists (ID: ${existing.id})`,
+      );
       console.log("Updating existing workflow...\n");
 
       const updated = await n8nFetch(`/api/v1/workflows/${existing.id}`, {

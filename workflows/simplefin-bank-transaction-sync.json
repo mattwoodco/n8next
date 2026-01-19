@@ -1,0 +1,291 @@
+{
+  "name": "SimpleFIN Bank Transaction Sync",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true
+  },
+  "nodes": [
+    {
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [100, 300],
+      "parameters": {
+        "path": "simplefin-sync",
+        "httpMethod": "POST",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "webhookId": "simplefin-sync-webhook"
+    },
+    {
+      "id": "set-token",
+      "name": "Set Input Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [300, 300],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "token-field",
+              "name": "simplefinToken",
+              "value": "={{ $json.body.simplefinToken || $json.simplefinToken || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "access-url-field",
+              "name": "accessUrl",
+              "value": "={{ $json.body.accessUrl || $json.accessUrl || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "output-path",
+              "name": "outputPath",
+              "value": "={{ $json.body.outputPath || $json.outputPath || \"/tmp/simplefin\" }}",
+              "type": "string"
+            },
+            {
+              "id": "start-date",
+              "name": "startDate",
+              "value": "={{ $json.body.startDate || $json.startDate || \"\" }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "check-access-url",
+      "name": "Check If Access URL Provided",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-access-url",
+              "leftValue": "={{ $json.accessUrl }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "decode-token",
+      "name": "Decode Token & Extract Claim URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300],
+      "parameters": {
+        "jsCode": "// Base64 decode the SimpleFIN token to get the claim URL\nconst token = $input.first().json.simplefinToken;\n\nif (!token || token === \"PASTE_YOUR_SIMPLEFIN_TOKEN_HERE\") {\n  throw new Error(\"Please provide a valid SimpleFIN token. Get one from https://bridge.simplefin.org/simplefin/create\");\n}\n\n// Decode Base64 token\nconst claimUrl = Buffer.from(token, 'base64').toString('utf-8');\n\n// Validate it's a URL\nif (!claimUrl.startsWith('http')) {\n  throw new Error(\"Invalid SimpleFIN token - decoded value is not a valid URL\");\n}\n\nreturn [{\n  json: {\n    ...$input.first().json,\n    claimUrl,\n  }\n}];"
+      }
+    },
+    {
+      "id": "claim-access-url",
+      "name": "Claim Access URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.claimUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "text"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "parse-access-url",
+      "name": "Parse Access URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "parameters": {
+        "jsCode": "// Parse the access URL to extract credentials\nconst accessUrl = $input.first().json.data;\nconst previousData = $('Set SimpleFIN Token').first().json;\n\nif (!accessUrl || !accessUrl.includes('@')) {\n  throw new Error(\"Failed to claim access URL. Token may be expired or already used.\");\n}\n\n// Parse URL with embedded credentials: https://user:pass@host/path\nconst urlMatch = accessUrl.match(/^(https?):\\/\\/([^:]+):([^@]+)@(.+)$/);\n\nif (!urlMatch) {\n  throw new Error(\"Invalid access URL format\");\n}\n\nconst [, protocol, username, password, hostPath] = urlMatch;\nconst baseUrl = `${protocol}://${hostPath}`;\n\nreturn [{\n  json: {\n    ...previousData,\n    accessUrl,\n    baseUrl,\n    username,\n    password,\n    accountsUrl: `${baseUrl}/accounts`,\n  }\n}];"
+      }
+    },
+    {
+      "id": "fetch-accounts",
+      "name": "Fetch Accounts & Transactions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.accountsUrl }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "start-date",
+              "value": "={{ $json.startDate ? Math.floor(new Date($json.startDate).getTime() / 1000) : \"\" }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "handle-auth-inline",
+      "name": "Fetch with Inline Auth",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 500],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.accessUrl + '/accounts' }}",
+        "authentication": "none",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "start-date",
+              "value": "={{ $json.startDate ? Math.floor(new Date($json.startDate).getTime() / 1000) : \"\" }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "merge-data",
+      "name": "Merge Account Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 500],
+      "parameters": {
+        "jsCode": "// Merge account data with previous context\n// Handle both paths: direct access URL or claimed from token\nlet previousData;\ntry {\n  previousData = $('Parse Access URL').first().json;\n} catch {\n  previousData = $('Use Existing Access URL').first().json;\n}\n\nconst accountData = $input.first().json;\n\nreturn [{\n  json: {\n    ...previousData,\n    accountData,\n  }\n}];"
+      }
+    },
+    {
+      "id": "transform-to-csv",
+      "name": "Transform to CSV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 500],
+      "parameters": {
+        "jsCode": "// Transform account data to CSV format\nconst data = $input.first().json;\nconst accountData = data.accountData;\nconst outputPath = data.outputPath;\n\nif (!accountData || !accountData.accounts) {\n  throw new Error(\"No account data received\");\n}\n\n// Check for errors from SimpleFIN\nif (accountData.errors && accountData.errors.length > 0) {\n  console.log(\"SimpleFIN warnings:\", accountData.errors);\n}\n\n// Collect all transactions from all accounts\nconst transactions = [];\n\nfor (const account of accountData.accounts) {\n  const orgName = account.org?.name || account.org?.domain || \"Unknown\";\n\n  if (account.transactions) {\n    for (const tx of account.transactions) {\n      transactions.push({\n        date: tx.posted ? new Date(tx.posted * 1000).toISOString().split('T')[0] : '',\n        transacted_date: tx.transacted_at ? new Date(tx.transacted_at * 1000).toISOString().split('T')[0] : '',\n        account_id: account.id,\n        account_name: account.name,\n        organization: orgName,\n        transaction_id: tx.id,\n        amount: tx.amount,\n        currency: account.currency,\n        description: tx.description,\n        pending: tx.pending ? 'yes' : 'no',\n        category: tx.extra?.category || '',\n      });\n    }\n  }\n}\n\n// Sort by date descending\ntransactions.sort((a, b) => b.date.localeCompare(a.date));\n\n// Generate CSV\nconst headers = [\n  'date', 'transacted_date', 'account_id', 'account_name',\n  'organization', 'transaction_id', 'amount', 'currency',\n  'description', 'pending', 'category'\n];\n\nconst csvRows = [headers.join(',')];\n\nfor (const tx of transactions) {\n  const row = headers.map(h => {\n    const val = tx[h] || '';\n    // Escape quotes and wrap in quotes if contains comma or quote\n    if (typeof val === 'string' && (val.includes(',') || val.includes('\"') || val.includes('\\n'))) {\n      return `\"${val.replace(/\"/g, '\"\"')}\"`;\n    }\n    return val;\n  });\n  csvRows.push(row.join(','));\n}\n\nconst csvContent = csvRows.join('\\n');\n\n// Summary\nconst summary = {\n  totalAccounts: accountData.accounts.length,\n  totalTransactions: transactions.length,\n  accounts: accountData.accounts.map(a => ({\n    name: a.name,\n    balance: a.balance,\n    currency: a.currency,\n    transactionCount: a.transactions?.length || 0,\n  })),\n};\n\nreturn [{\n  json: {\n    outputPath,\n    summary,\n    csvContent,\n    transactionCount: transactions.length,\n  }\n}];"
+      }
+    },
+    {
+      "id": "write-csv",
+      "name": "Return Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 500],
+      "parameters": {
+        "jsCode": "// Return all data in the response for preservation\n// n8n blocks filesystem access, so we return data for external storage\n\nconst data = $input.first().json;\nconst timestamp = new Date().toISOString();\n\nreturn [{\n  json: {\n    success: true,\n    timestamp,\n    message: `Retrieved ${data.summary.totalAccounts} accounts with ${data.transactionCount} transactions`,\n    summary: data.summary,\n    // Include raw data for preservation\n    rawResponse: data.accountData,\n    csvContent: data.csvContent,\n    accessUrl: data.accessUrl,\n  }\n}];"
+      }
+    },
+    {
+      "id": "skip-to-fetch",
+      "name": "Use Existing Access URL",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [600, 200],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "keep-data",
+              "name": "accessUrl",
+              "value": "={{ $json.accessUrl }}",
+              "type": "string"
+            },
+            {
+              "id": "keep-output",
+              "name": "outputPath",
+              "value": "={{ $json.outputPath }}",
+              "type": "string"
+            },
+            {
+              "id": "keep-start",
+              "name": "startDate",
+              "value": "={{ $json.startDate }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Set Input Parameters", "type": "main", "index": 0 }]]
+    },
+    "Set Input Parameters": {
+      "main": [[{ "node": "Check If Access URL Provided", "type": "main", "index": 0 }]]
+    },
+    "Check If Access URL Provided": {
+      "main": [
+        [{ "node": "Use Existing Access URL", "type": "main", "index": 0 }],
+        [{ "node": "Decode Token & Extract Claim URL", "type": "main", "index": 0 }]
+      ]
+    },
+    "Use Existing Access URL": {
+      "main": [[{ "node": "Fetch with Inline Auth", "type": "main", "index": 0 }]]
+    },
+    "Decode Token & Extract Claim URL": {
+      "main": [[{ "node": "Claim Access URL", "type": "main", "index": 0 }]]
+    },
+    "Claim Access URL": {
+      "main": [[{ "node": "Parse Access URL", "type": "main", "index": 0 }]]
+    },
+    "Parse Access URL": {
+      "main": [[{ "node": "Fetch with Inline Auth", "type": "main", "index": 0 }]]
+    },
+    "Fetch with Inline Auth": {
+      "main": [[{ "node": "Merge Account Data", "type": "main", "index": 0 }]]
+    },
+    "Merge Account Data": {
+      "main": [[{ "node": "Transform to CSV", "type": "main", "index": 0 }]]
+    },
+    "Transform to CSV": {
+      "main": [[{ "node": "Return Data", "type": "main", "index": 0 }]]
+    }
+  }
+}
